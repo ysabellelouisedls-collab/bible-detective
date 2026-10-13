@@ -70,6 +70,7 @@ hr{border:0;border-top:1px solid #a98049;margin:22px 0}
       <div class="home-buttons">
         <button class="gold" onclick="screen('cases')">▶ PLAY GAME</button>
         <button class="blue" onclick="screen('instructions')">📖 HOW TO PLAY</button>
+        <button class="blue" id="soundToggle" onclick="toggleSound()">🔊 SOUND: ON</button>
       </div>
     </div>
     <p class="menu-note">Ten cases. Three lives. One great detective.</p>
@@ -335,7 +336,20 @@ let score=0,lives=3,solved=new Set(),current=0,clueIndex=0,answered=false,casePo
 
 function screen(id){
   document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));
+
+  if(id==="cases"){
+    renderCases();
+  }
+
   document.getElementById(id).classList.add("active");
+
+  if(id==="home"||id==="cases"||id==="game"||id==="complete"){
+    startMusic();
+  }
+
+  if(id==="instructions"||id==="results"||id==="gameover"){
+    stopMusic();
+  }
 }
 
 function fallbackImage(img){
@@ -348,13 +362,14 @@ function fallbackImage(img){
 function renderCases(){
   const grid=document.getElementById("caseGrid");
   grid.innerHTML="";
+
   cases.forEach((c,i)=>{
     const card=document.createElement("div");
     card.className="card";
 
     const img=document.createElement("img");
     img.src=c.image;
-    img.alt=c.character+" Bible story";
+    img.alt="Bible story illustration";
     img.loading="lazy";
     img.onerror=function(){fallbackImage(this);};
 
@@ -366,7 +381,7 @@ function renderCases(){
     btn.className=solved.has(i)?"blue":"gold";
     btn.textContent=solved.has(i)?"✓ CASE SOLVED":"OPEN CASE";
     btn.onclick=()=>{
-      if(lives>0&&!ended)startCase(i);
+      if(lives>0&&!ended) startCase(i);
       else screen("gameover");
     };
 
@@ -377,29 +392,42 @@ function renderCases(){
 }
 
 function newGame(){
+  playSound("click");
   score=0;
   lives=3;
   solved=new Set();
   ended=false;
+  current=0;
+  clueIndex=0;
+  answered=false;
+  casePoints=0;
   renderCases();
   screen("cases");
 }
 
 function startCase(i){
-  if(ended||lives<=0){screen("gameover");return;}
+  if(ended||lives<=0){
+    screen("gameover");
+    return;
+  }
+
   current=i;
   clueIndex=0;
   answered=false;
   casePoints=0;
+
   const c=cases[current];
 
   document.getElementById("caseTitle").textContent="Case "+(i+1)+": "+c.title;
+
   const art=document.getElementById("mainArt");
   art.onerror=function(){fallbackImage(this);};
   art.src=c.image;
-  art.alt=c.character+" Bible story illustration";
+  art.alt="Bible story illustration";
+
   document.getElementById("caption").textContent="";
 
+  playSound("open");
   updateStatus();
   renderQuestion();
   screen("game");
@@ -412,7 +440,9 @@ function updateStatus(){
 
 function renderQuestion(){
   answered=false;
+
   const c=cases[current];
+
   document.getElementById("clueLabel").textContent="CLUE "+(clueIndex+1)+" OF 3";
   document.getElementById("clueText").textContent=c.clues[clueIndex];
 
@@ -422,6 +452,7 @@ function renderQuestion(){
 
   const box=document.getElementById("answers");
   box.innerHTML="";
+
   c.options.forEach((op,i)=>{
     const b=document.createElement("button");
     b.className="answer";
@@ -437,42 +468,60 @@ function renderQuestion(){
 }
 
 function reveal(){
-  if(ended||answered)return;
+  if(ended||answered) return;
+
   if(clueIndex<2){
+    playSound("clue");
     clueIndex++;
     renderQuestion();
   }
 }
 
 function choose(choice,button){
-  if(answered||ended||lives<=0)return;
+  if(answered||ended||lives<=0) return;
 
   const c=cases[current];
   const fb=document.getElementById("feedback");
   fb.classList.remove("hidden");
 
   if(choice===c.answer){
+    playSound("correct");
     answered=true;
-    casePoints=[10,5,2][clueIndex];
-    score+=casePoints;
-    solved.add(current);
+
+    const alreadySolved=solved.has(current);
+
+    if(alreadySolved){
+      casePoints=0;
+    }else{
+      casePoints=[10,5,2][clueIndex];
+      score+=casePoints;
+      solved.add(current);
+    }
 
     document.querySelectorAll(".answer").forEach((b,i)=>{
       b.disabled=true;
-      if(i===c.answer)b.classList.add("correct");
+      if(i===c.answer) b.classList.add("correct");
     });
 
     fb.className="feedback";
-    fb.innerHTML="<b>✓ Correct! You identified "+c.character+"!</b><br>+"+
-      casePoints+" points.<br><br>"+c.explanation+
-      "<br><br><b>Bible reference:</b> "+c.ref;
+
+    if(alreadySolved){
+      fb.innerHTML="<b>✓ Correct! This case was already solved.</b><br>No extra points awarded.<br><br>"+
+        c.explanation+"<br><br><b>Bible reference:</b> "+c.ref;
+    }else{
+      fb.innerHTML="<b>✓ Correct! You identified "+c.character+"!</b><br>+"+
+        casePoints+" points.<br><br>"+c.explanation+
+        "<br><br><b>Bible reference:</b> "+c.ref;
+    }
 
     const rb=document.getElementById("revealBtn");
     rb.disabled=false;
     rb.textContent="CONTINUE";
     rb.onclick=finishCase;
+
     updateStatus();
   }else{
+    playSound("wrong");
     lives--;
     button.classList.add("wrong");
     button.disabled=true;
@@ -483,7 +532,9 @@ function choose(choice,button){
 
     if(lives<=0){
       ended=true;
+
       document.querySelectorAll(".answer").forEach(b=>b.disabled=true);
+
       const rb=document.getElementById("revealBtn");
       rb.disabled=false;
       rb.textContent="VIEW RESULTS";
@@ -493,30 +544,186 @@ function choose(choice,button){
 }
 
 function finishCase(){
+  playSound("solved");
+
   const c=cases[current];
+
   document.getElementById("doneTitle").textContent="Case "+(current+1)+": "+c.title;
   document.getElementById("explanation").textContent=c.explanation;
   document.getElementById("reference").textContent=c.ref;
   document.getElementById("earned").textContent=casePoints;
+
   renderCases();
   screen("complete");
 }
 
 function results(){
+  stopMusic();
+  playSound("report");
+
   document.getElementById("solvedCount").textContent=solved.size+" / "+cases.length;
   document.getElementById("finalScore").textContent=score+" / "+(cases.length*10);
   document.getElementById("finalLives").textContent=lives;
 
-  let r="Rookie Detective",m="Keep investigating and learning Bible stories!";
-  if(score>=80){r="⭐ Master Detective";m="Excellent work! You uncovered many Bible mysteries.";}
-  else if(score>=50){r="🔎 Skilled Detective";m="Great job! Your detective skills are growing.";}
-  else if(score>0){r="📜 Junior Detective";m="Good start! Keep reading the clues and learning.";}
+  let r="Rookie Detective";
+  let m="Keep investigating and learning Bible stories!";
+
+  if(score>=80){
+    r="⭐ Master Detective";
+    m="Excellent work! You uncovered many Bible mysteries.";
+  }else if(score>=50){
+    r="🔎 Skilled Detective";
+    m="Great job! Your detective skills are growing.";
+  }else if(score>0){
+    r="📜 Junior Detective";
+    m="Good start! Keep reading the clues and learning.";
+  }
 
   document.getElementById("rank").textContent=r;
   document.getElementById("rankMessage").textContent=m;
+
   renderCases();
   screen("results");
 }
+
+/* BUILT-IN MUSIC AND SOUND EFFECTS */
+let audioContext=null;
+let soundEnabled=true;
+let musicTimer=null;
+let musicStep=0;
+let masterGain=null;
+
+function getAudioContext(){
+  if(!audioContext){
+    const AudioContextClass=window.AudioContext||window.webkitAudioContext;
+    if(!AudioContextClass) return null;
+
+    audioContext=new AudioContextClass();
+    masterGain=audioContext.createGain();
+    masterGain.gain.value=0.65;
+    masterGain.connect(audioContext.destination);
+  }
+
+  if(audioContext.state==="suspended"){
+    audioContext.resume();
+  }
+
+  return audioContext;
+}
+
+function tone(frequency,duration,type="sine",volume=0.12,delay=0,endFrequency=null){
+  const ctx=getAudioContext();
+  if(!ctx||!soundEnabled) return;
+
+  const oscillator=ctx.createOscillator();
+  const gain=ctx.createGain();
+  const start=ctx.currentTime+delay;
+
+  oscillator.type=type;
+  oscillator.frequency.setValueAtTime(frequency,start);
+
+  if(endFrequency){
+    oscillator.frequency.exponentialRampToValueAtTime(Math.max(1,endFrequency),start+duration);
+  }
+
+  gain.gain.setValueAtTime(0.0001,start);
+  gain.gain.exponentialRampToValueAtTime(Math.max(0.0002,volume),start+0.025);
+  gain.gain.exponentialRampToValueAtTime(0.0001,start+duration);
+
+  oscillator.connect(gain);
+  gain.connect(masterGain||ctx.destination);
+
+  oscillator.start(start);
+  oscillator.stop(start+duration+0.03);
+}
+
+function playSound(kind){
+  if(!soundEnabled) return;
+
+  getAudioContext();
+  if(!audioContext) return;
+
+  if(kind==="click"){
+    tone(520,0.07,"triangle",0.09);
+  }else if(kind==="open"){
+    tone(220,0.28,"sine",0.12,0,165);
+    tone(330,0.32,"triangle",0.07,0.12,247);
+  }else if(kind==="clue"){
+    tone(440,0.12,"sine",0.08);
+    tone(660,0.18,"triangle",0.07,0.10);
+  }else if(kind==="correct"){
+    tone(523.25,0.16,"sine",0.13);
+    tone(659.25,0.18,"sine",0.13,0.12);
+    tone(783.99,0.30,"sine",0.14,0.24);
+  }else if(kind==="wrong"){
+    tone(185,0.22,"sawtooth",0.07,0,105);
+    tone(130,0.25,"triangle",0.08,0.12,85);
+  }else if(kind==="solved"){
+    tone(392,0.20,"sine",0.12);
+    tone(523.25,0.22,"sine",0.12,0.15);
+    tone(659.25,0.30,"sine",0.14,0.30);
+    tone(783.99,0.45,"triangle",0.11,0.46);
+  }else if(kind==="report"){
+    tone(392,0.22,"triangle",0.09);
+    tone(330,0.30,"sine",0.09,0.16);
+  }
+}
+
+function startMusic(){
+  if(!soundEnabled||musicTimer) return;
+
+  const ctx=getAudioContext();
+  if(!ctx) return;
+
+  const notes=[110,146.83,130.81,164.81,123.47,146.83,98,130.81];
+  musicStep=0;
+
+  musicTimer=setInterval(()=>{
+    if(!soundEnabled||!audioContext||audioContext.state!=="running") return;
+
+    const note=notes[musicStep%notes.length];
+    tone(note,1.8,"sine",0.10);
+
+    if(musicStep%4===0){
+      tone(note*2,0.9,"triangle",0.055,0.15);
+    }
+
+    musicStep++;
+  },1500);
+}
+
+function stopMusic(){
+  if(musicTimer){
+    clearInterval(musicTimer);
+    musicTimer=null;
+  }
+}
+
+function toggleSound(){
+  soundEnabled=!soundEnabled;
+
+  const button=document.getElementById("soundToggle");
+
+  if(button){
+    button.textContent=soundEnabled?"🔊 SOUND: ON":"🔇 SOUND: OFF";
+  }
+
+  if(soundEnabled){
+    getAudioContext();
+    playSound("click");
+    startMusic();
+  }else{
+    stopMusic();
+  }
+}
+
+/* Browser audio starts after the player's first interaction. */
+document.addEventListener("pointerdown",function startAudioOnce(){
+  if(soundEnabled){
+    getAudioContext();
+    startMusic();
+  }
+},{once:true});
 
 renderCases();
 </script>
